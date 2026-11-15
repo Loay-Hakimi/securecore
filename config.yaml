@@ -1,0 +1,45 @@
+# SecureCore gateway configuration
+
+server:
+  port: 8080
+  read_timeout: 10s
+  write_timeout: 10s
+  idle_timeout: 60s
+
+upstream:
+  url: "http://localhost:3000"
+  health_check: "/healthz"
+  timeout: 5s
+
+rate_limiter:
+  enabled: true
+  requests_per_minute: 60
+  burst: 10
+  cleanup_interval: 5m
+  whitelist:
+    - "127.0.0.1"
+    - "10.0.0.0/8"
+
+ddos_protection:
+  enabled: true
+  global_rps_ceiling: 5000
+  per_ip_ban_threshold: 200   # requests within ban_window triggers a ban
+  ban_window: 10s
+  ban_duration: 15m
+  escalation_multiplier: 2.0  # each repeat offense multiplies ban duration
+
+security_headers:
+  hsts_max_age: 63072000
+  csp: "default-src 'self'; script-src 'self'"
+  permissions_policy: "geolocation=(), microphone=(), camera=()"
+  referrer_policy: "strict-origin-when-cross-origin"
+  frame_options: "DENY"
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"            # "stdout", "stderr", or a file path
+  redact_headers:
+    - "Authorization"
+    - "Cookie"
+    - "X-API-Key"
