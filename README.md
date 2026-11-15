@@ -107,28 +107,35 @@ Automatically injects the full OWASP-recommended header set on every proxied res
 securecore/
 │
 ├── cmd/
-│   └── gateway/
-│       └── main.go             # Entrypoint: config load, server bootstrap
+│   ├── gateway/
+│   │   └── main.go             # Entrypoint: config load, server bootstrap, graceful shutdown
+│   └── bench/
+│       └── main.go             # Reproducible benchmark harness (see benchmarks/)
 │
 ├── internal/
 │   ├── gateway/
-│   │   ├── proxy.go            # Reverse proxy core (httputil.ReverseProxy)
-│   │   └── router.go           # Request routing & middleware chain
+│   │   ├── proxy.go            # Reverse proxy core (httputil.ReverseProxy) + health handler
+│   │   └── router.go           # Middleware chain assembly
 │   │
 │   ├── middleware/
-│   │   ├── ratelimiter.go      # Sliding window rate limiter + Mutex management
-│   │   ├── ddos_guard.go       # DDoS detection & IP ban engine
+│   │   ├── clientip.go         # Client-IP extraction + CIDR-aware whitelist
+│   │   ├── ratelimiter.go      # Per-IP sliding-window rate limiter
+│   │   ├── ddos_guard.go       # Global RPS ceiling + per-IP ban engine (escalating)
 │   │   ├── headers.go          # Security header injection middleware
-│   │   └── logger.go           # Structured secure logging middleware
+│   │   └── logger.go           # Structured logging w/ redaction + chained hash
 │   │
 │   ├── config/
-│   │   └── config.go           # YAML config loader with validation
+│   │   └── config.go           # YAML config loader with defaults + validation
 │   │
 │   └── store/
-│       ├── ip_store.go         # In-memory IP counter store (RWMutex-protected)
-│       └── ban_list.go         # Temporary ban registry with TTL
+│       ├── ip_store.go         # Sliding-window IP counter store (RWMutex-protected)
+│       └── ban_list.go         # Temporary ban registry with TTL + escalation
+│
+├── benchmarks/
+│   └── RESULTS.md              # Latest measured benchmark output
 │
 ├── config.yaml                 # Gateway configuration
+├── Dockerfile                  # Multi-stage build → scratch image
 ├── go.mod
 ├── go.sum
 └── Makefile
@@ -309,16 +316,39 @@ docker run -p 8080:8080 -v $(pwd)/config.yaml:/app/config.yaml securecore
 
 ## 📊 Performance Benchmarks
 
-Tested on: Ubuntu 22.04, 4-core CPU, 8GB RAM, upstream mock returning `200 OK` instantly.
+All numbers below are **real measurements** produced by the benchmark tooling in
+this repo — not projections. Reproduce them with `make bench`. Full output is
+saved in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md).
+
+Measured on: **windows/amd64, 8 logical CPUs, Go 1.27.4** — mock upstream + full
+gateway, in-process over the loopback interface.
+
+### End-to-end load — `go run ./cmd/bench -duration 5s -concurrency 50`
 
 | Metric | Result |
 |--------|--------|
-| Throughput (no rate limit) | **~42,000 req/sec** |
-| P99 latency (proxy overhead) | **< 1.2ms** |
-| Memory at 10,000 concurrent connections | **~38MB** |
-| Goroutines under load | Scales linearly, GC managed |
-| Race conditions detected (`-race`) | **0** |
-| Binary size | **~8MB** (static, no dependencies) |
+| Throughput | **~7,500 req/sec** |
+| Latency P50 | **5.6 ms** |
+| Latency P99 | **27.9 ms** |
+| Failures | **0** / 37,388 requests |
+| Heap in use after run | **~5.6 MB** |
+| Stripped binary size | **7.6 MB** (static, no runtime dependencies) |
+
+> Throughput here is bounded by the in-process loopback HTTP client and the
+> Windows network stack, not by the gateway's internal logic — treat it as a
+> floor for this machine, not a hardware ceiling.
+
+### Microbenchmarks — `go test -bench=. -benchmem`
+
+| Benchmark | ns/op | allocs/op |
+|-----------|-------|-----------|
+| Rate-limit decision (`store.Allow`: lock + window prune + append) | **412** | **0** |
+| Full rate-limiter middleware pass (incl. response recorder) | **1,739** | **16** |
+
+> **Race detector:** `go test -race ./...` requires CGO and a C compiler, which
+> were not available on the build machine above, so a race-free count is not
+> claimed here. The concurrency test runs without `-race` locally; run
+> `make race` where CGO is available to exercise the detector directly.
 
 ---
 

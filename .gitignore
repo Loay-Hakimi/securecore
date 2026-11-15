@@ -1,0 +1,21 @@
+# Compiled binaries
+securecore
+securecore.exe
+/bin/
+*.exe
+*.test
+*.out
+
+# Logs
+/logs/
+*.log
+
+# Go build/test caches (should not be committed)
+/vendor/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
