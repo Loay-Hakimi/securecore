@@ -3,6 +3,7 @@
 # 🌐 SecureCore
 ### High-Performance Secure API Gateway in Go
 
+[![CI](https://github.com/Loay-Hakimi/securecore/actions/workflows/ci.yml/badge.svg)](https://github.com/Loay-Hakimi/securecore/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
 [![Security](https://img.shields.io/badge/Focus-API%20Security-EF4444?style=for-the-badge&logo=shield&logoColor=white)](https://github.com)
@@ -346,9 +347,11 @@ gateway, in-process over the loopback interface.
 | Full rate-limiter middleware pass (incl. response recorder) | **1,739** | **16** |
 
 > **Race detector:** `go test -race ./...` requires CGO and a C compiler, which
-> were not available on the build machine above, so a race-free count is not
-> claimed here. The concurrency test runs without `-race` locally; run
-> `make race` where CGO is available to exercise the detector directly.
+> were not available on the Windows build machine above. It instead runs in
+> **GitHub Actions CI** (Ubuntu, CGO available) on every push — the
+> `TestIPStoreConcurrent` test hammers the `RWMutex`-protected store with 50
+> goroutines, and the suite passes race-free there (see the CI badge). Run
+> `make race` locally where CGO is available to exercise the detector directly.
 
 ---
 
